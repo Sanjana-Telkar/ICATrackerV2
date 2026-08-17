@@ -158,7 +158,8 @@ function renderSubmitView() {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today      = new Date().toISOString().slice(0, 10);
+  const loggedUser = getLoggedInUser(); // from login.js — null if not logged in
 
   // Build name options sorted by team then name
   const sorted = [...ROSTER].sort((a, b) =>
@@ -172,11 +173,13 @@ function renderSubmitView() {
       nameOptions += `<optgroup label="${escapeHTML(p.team)}">`;
       currentTeam = p.team;
     }
+    const selected = loggedUser && p.email.toLowerCase() === loggedUser.email.toLowerCase()
+      ? "selected" : "";
     nameOptions += `<option
       value="${escapeHTML(p.email)}"
       data-name="${escapeHTML(p.name)}"
       data-team="${escapeHTML(p.team)}"
-      data-fte="${p.fte}">${escapeHTML(p.name)}</option>`;
+      data-fte="${p.fte}" ${selected}>${escapeHTML(p.name)}</option>`;
   });
   if (currentTeam !== null) nameOptions += `</optgroup>`;
 

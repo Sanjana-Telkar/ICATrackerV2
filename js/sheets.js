@@ -59,13 +59,16 @@ async function fetchFromSheets(dateKey) {
       assistants: Array.isArray(row.assistants) ? row.assistants : []
     }));
 
-    // Only overwrite localStorage if Sheets data is newer
+    // For today's date, Sheets always wins — a self-submission is always
+    // more current than a pre-staged tracker-data.js entry.
+    // For past dates, only overwrite if Sheets data is newer.
+    const today    = new Date().toISOString().slice(0, 10);
     const existing = Storage.getDay(dateKey);
     const sheetTs  = new Date(first.uploadedAt || 0).getTime();
     const localTs  = existing && existing.uploadedAt
                        ? new Date(existing.uploadedAt).getTime() : 0;
 
-    if (sheetTs >= localTs) {
+    if (dateKey === today || sheetTs >= localTs) {
       // Build map from Sheets rows, then pad with full ROSTER as "not used"
       // so adoption % is always calculated against total headcount.
       const recordMap = {};

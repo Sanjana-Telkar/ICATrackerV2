@@ -12,6 +12,49 @@
 </head>
 <body>
 
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="login-screen">
+  <div class="login-card" id="login-card">
+
+    <!-- Brand -->
+    <div class="login-brand">
+      <div class="login-brand-mark"></div>
+      <div>
+        <div class="login-brand-name">ICA Tracker</div>
+        <div class="login-brand-sub">Adoption Console · Heineken × IBM</div>
+      </div>
+    </div>
+
+    <h2 class="login-title">Welcome back</h2>
+
+    <div class="login-field">
+      <label for="login-email">Email address</label>
+      <input type="email" id="login-email" placeholder="yourname@ibm.com" autocomplete="username" spellcheck="false">
+    </div>
+
+    <div class="login-field">
+      <label for="login-password">Password</label>
+      <div class="login-pw-wrap">
+        <input type="password" id="login-password" placeholder="Your registered name" autocomplete="current-password">
+        <button class="login-eye" id="login-eye" type="button" tabindex="-1" aria-label="Toggle password visibility">
+          <svg id="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="login-error" id="login-error"></div>
+
+    <button class="login-btn" id="login-btn">Sign In</button>
+
+    <p class="login-footer">Your session ends when you close this tab.</p>
+  </div>
+</div>
+
+<!-- ============ APP SHELL (hidden until logged in) ============ -->
+<div id="app-shell-wrap" style="display:none;">
 <div class="app-shell">
   <!-- ============ SIDEBAR ============ -->
   <aside class="sidebar">
@@ -51,8 +94,10 @@
     </nav>
 
     <div class="sidebar-foot">
+      <div id="sidebar-user" style="display:none;font-size:12px;font-weight:600;color:var(--heineken-green-bright);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
       <div><span class="dot"></span>Cloud Sync is ON</div>
       <div style="margin-top:6px;">Heineken × IBM Consulting</div>
+      <button onclick="logout()" style="margin-top:10px;width:100%;background:transparent;border:1px solid var(--border);color:var(--text-faint);border-radius:var(--radius-sm);padding:6px 0;font-size:11.5px;cursor:pointer;font-family:var(--font-body);">Sign out</button>
     </div>
   </aside>
 
@@ -156,6 +201,7 @@
 
   </main>
 </div>
+</div><!-- end app-shell-wrap -->
 
 <!-- ============ PASSKEY MODAL ============ -->
 <div class="modal-backdrop" id="passkeyModal">
@@ -204,6 +250,7 @@
 
 <!-- ============ SCRIPTS ============ -->
 <script src="js/vendor/xlsx.full.min.js"></script>
+<script src="js/login.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/data.js"></script>

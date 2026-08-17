@@ -116,6 +116,9 @@ function renderLastUploadInfo() {
 
 /* ---------------- Init ---------------- */
 document.addEventListener("DOMContentLoaded", async () => {
+  // Login gate — must come first before any rendering
+  initLogin();
+
   // Seed localStorage from data/tracker-data.js (the file you edit in GitHub).
   loadFromTrackerData();
 

@@ -16,9 +16,48 @@ var HEADERS = ["timestamp", "dateKey", "sourceColumn", "email",
 //  JSONP:  <script src="URL?dateKey=2026-08-14&callback=myFn">
 // ---------------------------------------------------------------------------
 function doGet(e) {
+  var callback = e && e.parameter && e.parameter.callback ? e.parameter.callback : null;
+
   try {
-    var dateKey  = e && e.parameter && e.parameter.dateKey   ? e.parameter.dateKey  : null;
-    var callback = e && e.parameter && e.parameter.callback  ? e.parameter.callback : null;
+    var action = e && e.parameter && e.parameter.action ? e.parameter.action : "get";
+
+    // ── POST-via-GET: action=post&data={...}&callback=fn ──────────────────
+    // Corporate networks block fetch() to script.google.com, so the client
+    // encodes the POST body as a ?data= query param and uses a <script> tag.
+    if (action === "post") {
+      var raw  = e && e.parameter && e.parameter.data ? e.parameter.data : null;
+      if (!raw) {
+        return jsonpResponse(callback, { ok: false, error: "Missing data parameter." });
+      }
+      var body         = JSON.parse(raw);
+      var dateKey      = body.dateKey;
+      var sourceColumn = body.sourceColumn || dateKey;
+      var uploadedAt   = body.uploadedAt   || new Date().toISOString();
+      var rec          = body.record;
+
+      if (!dateKey || !rec || !rec.email) {
+        return jsonpResponse(callback, { ok: false, error: "Missing dateKey or record.email." });
+      }
+
+      var sheet = getOrCreateSheet();
+      deleteRowForPersonOnDate(sheet, dateKey, rec.email);
+      sheet.appendRow([
+        new Date().toISOString(),
+        dateKey,
+        sourceColumn,
+        rec.email  || "",
+        rec.name   || "",
+        rec.team   || "",
+        rec.fte    != null ? rec.fte : 1,
+        JSON.stringify(rec.assistants || []),
+        uploadedAt
+      ]);
+
+      return jsonpResponse(callback, { ok: true });
+    }
+
+    // ── GET: ?dateKey=YYYY-MM-DD&callback=fn ─────────────────────────────
+    var dateKey  = e && e.parameter && e.parameter.dateKey ? e.parameter.dateKey : null;
     var sheet    = getOrCreateSheet();
     var rows     = getAllRows(sheet);
 
@@ -26,30 +65,28 @@ function doGet(e) {
       rows = rows.filter(function(r) { return r.dateKey === dateKey; });
     }
 
-    var payload = JSON.stringify({ ok: true, rows: rows });
-
-    // JSONP mode — wraps response in callback function call
-    // This bypasses corporate network fetch() blocks
-    if (callback) {
-      return ContentService
-        .createTextOutput(callback + "(" + payload + ");")
-        .setMimeType(ContentService.MimeType.JAVASCRIPT);
-    }
-
-    return ContentService
-      .createTextOutput(payload)
-      .setMimeType(ContentService.MimeType.JSON);
+    return jsonpResponse(callback, { ok: true, rows: rows });
 
   } catch (err) {
-    var errPayload = JSON.stringify({ ok: false, error: err.message });
-    return ContentService
-      .createTextOutput(errPayload)
-      .setMimeType(ContentService.MimeType.JSON);
+    return jsonpResponse(callback, { ok: false, error: err.message });
   }
 }
 
+// Unified JSONP/JSON responder
+function jsonpResponse(callback, obj) {
+  var payload = JSON.stringify(obj);
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + "(" + payload + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService
+    .createTextOutput(payload)
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 // ---------------------------------------------------------------------------
-//  POST — upsert a single person's usage for a date
+//  POST — still supported for non-corporate networks / direct API use
 // ---------------------------------------------------------------------------
 function doPost(e) {
   try {
@@ -60,7 +97,7 @@ function doPost(e) {
     var rec          = body.record;
 
     if (!dateKey || !rec || !rec.email) {
-      return buildResponse({ ok: false, error: "Missing dateKey or record.email." });
+      return jsonpResponse(null, { ok: false, error: "Missing dateKey or record.email." });
     }
 
     var sheet = getOrCreateSheet();
@@ -78,10 +115,10 @@ function doPost(e) {
       uploadedAt
     ]);
 
-    return buildResponse({ ok: true });
+    return jsonpResponse(null, { ok: true });
 
   } catch (err) {
-    return buildResponse({ ok: false, error: err.message });
+    return jsonpResponse(null, { ok: false, error: err.message });
   }
 }
 
@@ -126,8 +163,3 @@ function deleteRowForPersonOnDate(sheet, dateKey, email) {
   }
 }
 
-function buildResponse(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}

@@ -71,37 +71,55 @@ async function fetchFromSheets(dateKey) {
       cleanup();
 
       try {
-        if (!json.ok || !Array.isArray(json.rows) || json.rows.length === 0) {
-          resolve(); return;
-        }
-
-        const first     = json.rows[0];
-        const sheetRows = json.rows.map(row => ({
-          email:      row.email,
-          name:       row.name,
-          team:       row.team,
-          fte:        parseFloat(row.fte) || 1,
-          assistants: Array.isArray(row.assistants) ? row.assistants : []
-        }));
+        if (!json.ok) { resolve(); return; }
 
         const today    = new Date().toISOString().slice(0, 10);
         const existing = Storage.getDay(dateKey);
-        const sheetTs  = new Date(first.uploadedAt || 0).getTime();
-        const localTs  = existing && existing.uploadedAt
-                           ? new Date(existing.uploadedAt).getTime() : 0;
 
-        if (dateKey === today || sheetTs >= localTs) {
+        // If the sheet has rows for this date, merge them in (sheet wins when
+        // its timestamp is newer, or when this is today's date).
+        if (Array.isArray(json.rows) && json.rows.length > 0) {
+          const first     = json.rows[0];
+          const sheetRows = json.rows.map(row => ({
+            email:      row.email,
+            name:       row.name,
+            team:       row.team,
+            fte:        parseFloat(row.fte) || 1,
+            assistants: Array.isArray(row.assistants) ? row.assistants : []
+          }));
+
+          const sheetTs = new Date(first.uploadedAt || 0).getTime();
+          const localTs = existing && existing.uploadedAt
+                            ? new Date(existing.uploadedAt).getTime() : 0;
+
+          if (dateKey === today || sheetTs >= localTs) {
+            const recordMap = {};
+            sheetRows.forEach(r => { recordMap[r.email.toLowerCase()] = normaliseRecord(r); });
+            ROSTER.forEach(p => {
+              const k = p.email.toLowerCase();
+              if (!recordMap[k]) {
+                recordMap[k] = normaliseRecord({ email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: [] });
+              }
+            });
+            const records = Object.values(recordMap);
+            Storage.saveDay(dateKey, records, {
+              sourceColumn: first.sourceColumn || dateKey,
+              fte_total:    records.reduce((s, r) => s + (parseFloat(r.fte) || 1), 0)
+            });
+          }
+        } else if (!existing) {
+          // Sheet has no submissions yet for this date AND localStorage is also
+          // empty (e.g. private/incognito window). Seed the ROSTER baseline so
+          // the dashboard shows correct headcount and adoption % from the start.
           const recordMap = {};
-          sheetRows.forEach(r => { recordMap[r.email.toLowerCase()] = normaliseRecord(r); });
           ROSTER.forEach(p => {
-            const k = p.email.toLowerCase();
-            if (!recordMap[k]) {
-              recordMap[k] = normaliseRecord({ email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: [] });
-            }
+            recordMap[p.email.toLowerCase()] = normaliseRecord({
+              email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: []
+            });
           });
           const records = Object.values(recordMap);
           Storage.saveDay(dateKey, records, {
-            sourceColumn: first.sourceColumn || dateKey,
+            sourceColumn: dateKey,
             fte_total:    records.reduce((s, r) => s + (parseFloat(r.fte) || 1), 0)
           });
         }
@@ -125,18 +143,53 @@ async function fetchFromSheets(dateKey) {
 }
 
 // ---------------------------------------------------------------------------
-//  POST a single person's usage (upsert — overwrites if already submitted)
+//  POST a single person's usage via JSONP-over-GET
+//  (corporate networks block fetch() to script.google.com; a <script> tag
+//   is the only reliable cross-origin transport available)
 // ---------------------------------------------------------------------------
 async function postToSheets(payload) {
   // payload = { dateKey, sourceColumn, uploadedAt, record: { email, name, team, fte, assistants } }
-  const resp = await fetch(CONFIG.SHEETS_URL, {
-    method:  "POST",
-    headers: { "Content-Type": "text/plain" }, // avoids CORS pre-flight
-    body:    JSON.stringify(payload)
+  return new Promise((resolve, reject) => {
+    const callbackName = "_icaPost_" + Date.now();
+    const script       = document.createElement("script");
+    let   settled      = false;
+
+    const cleanup = () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      delete window[callbackName];
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Submission timed out. Please check your connection and try again."));
+    }, 12000);
+
+    window[callbackName] = function(json) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      if (json && json.ok) {
+        resolve(json);
+      } else {
+        reject(new Error((json && json.error) || "Unknown error from Apps Script."));
+      }
+    };
+
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error("Submission failed — network error. Please try again."));
+    };
+
+    const data = encodeURIComponent(JSON.stringify(payload));
+    script.src = `${CONFIG.SHEETS_URL}?action=post&data=${data}&callback=${callbackName}`;
+    document.head.appendChild(script);
   });
-  const json = await resp.json();
-  if (!json.ok) throw new Error(json.error || "Unknown error from Apps Script.");
-  return json;
 }
 
 // ---------------------------------------------------------------------------

@@ -697,6 +697,8 @@ function checkAlreadySubmitted(email, dateKey) {
       const rec    = day && day.records
         ? day.records.find(r => r.email.toLowerCase() === email.toLowerCase())
         : null;
+      console.log("[Submit] prefill check — email:", email, "| dateKey:", dateKey,
+        "| day exists:", !!day, "| rec:", rec ? JSON.stringify({assistants: rec.assistants, onLeave: rec.onLeave}) : "null");
       const isOOO  = rec && rec.onLeave;
       const prefill = rec && !isOOO && rec.assistants && rec.assistants.length > 0
         ? rec.assistants.join(", ")

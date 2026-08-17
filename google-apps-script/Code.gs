@@ -143,6 +143,15 @@ function getAllRows(sheet) {
   return data.slice(1).map(function(row) {
     var obj = {};
     headers.forEach(function(h, i) { obj[h] = row[i]; });
+    // dateKey may be stored as a Date object by Sheets — normalise to YYYY-MM-DD string
+    if (obj.dateKey instanceof Date) {
+      var d = obj.dateKey;
+      obj.dateKey = d.getFullYear() + "-" +
+        String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+    } else {
+      obj.dateKey = String(obj.dateKey || "").trim();
+    }
     try { obj.assistants = JSON.parse(obj.assistants); } catch(e) { obj.assistants = []; }
     return obj;
   });

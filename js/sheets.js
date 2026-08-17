@@ -570,15 +570,40 @@ function renderSubmitView() {
   oooBanner.addEventListener("click", _toggleOOO);
   oooBanner.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); _toggleOOO(); } });
 
-  // Quick-add chips
+  // Quick-add chips — toggle on/off, keep chip highlights in sync with input
+  function syncChipStates() {
+    const inp  = document.getElementById("sub-assistants");
+    if (!inp) return;
+    const active = inp.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    document.querySelectorAll("#sub-chips .sub-chip").forEach(c => {
+      c.classList.toggle("active", active.includes(c.dataset.val.toLowerCase()));
+    });
+  }
+
   document.getElementById("sub-chips").addEventListener("click", function(e) {
     const chip = e.target.closest(".sub-chip");
     if (!chip) return;
-    const inp = document.getElementById("sub-assistants");
-    const val = inp.value.trim();
-    inp.value = val ? val + ", " + chip.dataset.val : chip.dataset.val;
+    const inp    = document.getElementById("sub-assistants");
+    const active = inp.value.split(",").map(s => s.trim()).filter(Boolean);
+    const val    = chip.dataset.val;
+    const idx    = active.findIndex(s => s.toLowerCase() === val.toLowerCase());
+    if (idx === -1) {
+      // Add
+      active.push(val);
+    } else {
+      // Remove (toggle off)
+      active.splice(idx, 1);
+    }
+    inp.value = active.join(", ");
+    syncChipStates();
     inp.focus();
   });
+
+  // Keep chips in sync as user types manually
+  document.getElementById("sub-assistants").addEventListener("input", syncChipStates);
+
+  // Highlight chips that match the pre-filled value on load
+  syncChipStates();
 
   document.getElementById("sub-submit-btn").addEventListener("click", handleSelfSubmit);
 }

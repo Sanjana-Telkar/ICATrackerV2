@@ -70,11 +70,15 @@ async function fetchFromSheets(dateKey) {
       clearTimeout(timer);
       cleanup();
 
+      console.log("[Sheets] fetchFromSheets response:", JSON.stringify(json).slice(0, 300));
+
       try {
-        if (!json.ok) { resolve(); return; }
+        if (!json.ok) { console.warn("[Sheets] json.ok is false:", json); resolve(); return; }
 
         const today    = new Date().toISOString().slice(0, 10);
         const existing = Storage.getDay(dateKey);
+
+        console.log("[Sheets] dateKey:", dateKey, "| rows:", json.rows ? json.rows.length : "n/a", "| existing in localStorage:", !!existing);
 
         // If the sheet has rows for this date, merge them in (sheet wins when
         // its timestamp is newer, or when this is today's date).
@@ -91,6 +95,8 @@ async function fetchFromSheets(dateKey) {
           const sheetTs = new Date(first.uploadedAt || 0).getTime();
           const localTs = existing && existing.uploadedAt
                             ? new Date(existing.uploadedAt).getTime() : 0;
+
+          console.log("[Sheets] sheetTs:", sheetTs, "| localTs:", localTs, "| will merge:", dateKey === today || sheetTs >= localTs);
 
           if (dateKey === today || sheetTs >= localTs) {
             const recordMap = {};
@@ -171,6 +177,7 @@ async function postToSheets(payload) {
       settled = true;
       clearTimeout(timer);
       cleanup();
+      console.log("[Sheets] postToSheets response:", JSON.stringify(json));
       if (json && json.ok) {
         resolve(json);
       } else {
@@ -183,11 +190,14 @@ async function postToSheets(payload) {
       settled = true;
       clearTimeout(timer);
       cleanup();
+      console.error("[Sheets] postToSheets script load failed — URL was:", script.src.slice(0, 120));
       reject(new Error("Submission failed — network error. Please try again."));
     };
 
     const data = encodeURIComponent(JSON.stringify(payload));
-    script.src = `${CONFIG.SHEETS_URL}?action=post&data=${data}&callback=${callbackName}`;
+    const url  = `${CONFIG.SHEETS_URL}?action=post&data=${data}&callback=${callbackName}`;
+    console.log("[Sheets] postToSheets sending to:", url.slice(0, 120));
+    script.src = url;
     document.head.appendChild(script);
   });
 }

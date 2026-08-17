@@ -84,13 +84,18 @@ async function fetchFromSheets(dateKey) {
         // its timestamp is newer, or when this is today's date).
         if (Array.isArray(json.rows) && json.rows.length > 0) {
           const first     = json.rows[0];
-          const sheetRows = json.rows.map(row => ({
-            email:      row.email,
-            name:       row.name,
-            team:       row.team,
-            fte:        parseFloat(row.fte) || 1,
-            assistants: Array.isArray(row.assistants) ? row.assistants : []
-          }));
+          const rosterMap = {};
+          ROSTER.forEach(p => { rosterMap[p.email.toLowerCase()] = p; });
+          const sheetRows = json.rows.map(row => {
+            const rp = rosterMap[row.email.toLowerCase()] || {};
+            return {
+              email:      row.email,
+              name:       row.name  || rp.name  || "",
+              team:       row.team  || rp.team  || "",
+              fte:        parseFloat(row.fte) || rp.fte || 1,
+              assistants: Array.isArray(row.assistants) ? row.assistants : []
+            };
+          });
 
           const sheetTs = new Date(first.uploadedAt || 0).getTime();
           const localTs = existing && existing.uploadedAt

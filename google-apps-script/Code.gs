@@ -5,13 +5,13 @@
 //    Who has access: Anyone (no sign-in required)
 //
 //  Sheet layout (ICA_Usage):
-//    Row 1  — headers: email | name | team | fte | 2026-08-17 | 2026-08-18 | …
+//    Row 1  — headers: email | name | team | 2026-08-17 | 2026-08-18 | …
 //    Row 2+ — one row per person; date columns hold comma-separated assistants
 //             or "On Leave" for OOO days; empty = not yet submitted
 // =============================================================================
 
 var SHEET_NAME   = "ICA_Usage";
-var META_COLS    = ["email", "name", "team", "fte"];  // fixed left columns
+var META_COLS    = ["email", "name", "team"];  // fixed left columns
 var META_COL_COUNT = META_COLS.length;
 
 // ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ function writeSubmission(body) {
   }
 
   var sheet   = getOrCreateSheet();
-  var headers = getHeaders(sheet);      // ["email","name","team","fte","2026-08-17",...]
+  var headers = getHeaders(sheet);      // ["email","name","team","2026-08-17",...]
 
   // ── Ensure the date column exists ────────────────────────────────────────
   var dateColIdx = headers.indexOf(dateKey);
@@ -105,24 +105,21 @@ function writeSubmission(body) {
   if (rowIdx === -1) {
     // New person — append a full row
     var newRow = new Array(headers.length).fill("");
-    newRow[0] = rec.email  || "";
-    newRow[1] = rec.name   || "";
-    newRow[2] = rec.team   || "";
-    newRow[3] = rec.fte    != null ? rec.fte : 1;
+    newRow[0] = rec.email || "";
+    newRow[1] = rec.name  || "";
+    newRow[2] = rec.team  || "";
     newRow[dateColIdx] = assistantStr;
     sheet.appendRow(newRow);
   } else {
     // Existing person — update only the date cell
-    // Sheet rows are 1-based; data[0] is header row = sheet row 1
     var sheetRow = rowIdx + 1;
     var sheetCol = dateColIdx + 1;  // 1-based
     sheet.getRange(sheetRow, sheetCol).setValue(assistantStr);
 
-    // Also refresh name/team/fte in case they changed
+    // Also refresh name/team in case they changed
     sheet.getRange(sheetRow, 1).setValue(rec.email || "");
     sheet.getRange(sheetRow, 2).setValue(rec.name  || "");
     sheet.getRange(sheetRow, 3).setValue(rec.team  || "");
-    sheet.getRange(sheetRow, 4).setValue(rec.fte   != null ? rec.fte : 1);
   }
 }
 
@@ -151,9 +148,8 @@ function getRowsForDate(dateKey) {
       email:      email,
       name:       String(row[1] || "").trim(),
       team:       String(row[2] || "").trim(),
-      fte:        parseFloat(row[3]) || 1,
       assistants: assistants,
-      uploadedAt: new Date().toISOString()  // pivot sheet doesn't store per-cell timestamps
+      uploadedAt: new Date().toISOString()
     });
   }
 

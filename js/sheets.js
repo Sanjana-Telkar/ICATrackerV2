@@ -667,6 +667,11 @@ function checkAlreadySubmitted(email, dateKey) {
     if (asstInput) {
       asstInput.value    = wasOOO ? "" : submitted;
       asstInput.disabled = true;
+      // Highlight chips matching the already-submitted assistants
+      const active = asstInput.value.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      document.querySelectorAll("#sub-chips .sub-chip").forEach(c => {
+        c.classList.toggle("active", active.includes(c.dataset.val.toLowerCase()));
+      });
     }
     if (btn) {
       btn.disabled = true;
@@ -683,10 +688,39 @@ function checkAlreadySubmitted(email, dateKey) {
         ? `✈️ <strong>Marked as Out of Office for ${dateKey}.</strong><br><span style="font-size:12px;opacity:0.8;">Contact admin if you need a correction.</span>`
         : `⚠️ <strong>Already submitted for ${dateKey}.</strong><br>Recorded: <em>${escapeHTML(submitted)}</em><br><span style="font-size:12px;opacity:0.8;">Contact admin if you need a correction.</span>`);
   } else {
-    // Unlock the form
-    if (asstInput) { asstInput.disabled = false; asstInput.value = ""; }
-    if (oooBanner) { oooBanner.classList.remove("active"); oooBanner.setAttribute("aria-checked", "false"); }
-    if (usageCard) usageCard.classList.remove("sub-ooo-collapsed");
+    // Unlock the form — pre-fill from localStorage/Sheet data if available
+    if (asstInput) {
+      asstInput.disabled = false;
+
+      // Look up whatever is already recorded for this person today
+      const day    = Storage.getDay(dateKey);
+      const rec    = day && day.records
+        ? day.records.find(r => r.email.toLowerCase() === email.toLowerCase())
+        : null;
+      const isOOO  = rec && rec.onLeave;
+      const prefill = rec && !isOOO && rec.assistants && rec.assistants.length > 0
+        ? rec.assistants.join(", ")
+        : "";
+
+      asstInput.value = prefill;
+
+      // Sync chip highlights to pre-filled value
+      const active = prefill.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      document.querySelectorAll("#sub-chips .sub-chip").forEach(c => {
+        c.classList.toggle("active", active.includes(c.dataset.val.toLowerCase()));
+      });
+
+      // Pre-fill OOO toggle if they were marked OOO in the sheet
+      if (oooBanner) {
+        oooBanner.classList.toggle("active", !!isOOO);
+        oooBanner.setAttribute("aria-checked", isOOO ? "true" : "false");
+      }
+      if (usageCard) usageCard.classList.toggle("sub-ooo-collapsed", !!isOOO);
+    }
+    if (!asstInput) {
+      if (oooBanner) { oooBanner.classList.remove("active"); oooBanner.setAttribute("aria-checked", "false"); }
+      if (usageCard) usageCard.classList.remove("sub-ooo-collapsed");
+    }
     if (btn) {
       btn.disabled = false;
       btn.classList.remove("sub-ooo-btn");

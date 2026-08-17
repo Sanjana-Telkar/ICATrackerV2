@@ -1,7 +1,6 @@
 // =============================================================================
 //  ICA Tracker — Google Apps Script
-//  Paste this entire file into script.google.com → New project → Code.gs
-//  Then deploy as a Web App:
+//  Deploy as Web App:
 //    Execute as:     Me
 //    Who has access: Anyone (no sign-in required)
 // =============================================================================
@@ -12,23 +11,40 @@ var HEADERS = ["timestamp", "dateKey", "sourceColumn", "email",
                "name", "team", "fte", "assistants", "uploadedAt"];
 
 // ---------------------------------------------------------------------------
-//  GET — fetch all rows for a given dateKey
-//  Called by: fetch(URL + "?dateKey=2026-08-14")
+//  GET — supports both plain JSON and JSONP (callback param)
+//  Plain:  fetch(URL + "?dateKey=2026-08-14")
+//  JSONP:  <script src="URL?dateKey=2026-08-14&callback=myFn">
 // ---------------------------------------------------------------------------
 function doGet(e) {
   try {
-    var dateKey = e && e.parameter && e.parameter.dateKey
-                  ? e.parameter.dateKey : null;
-    var sheet = getOrCreateSheet();
-    var rows  = getAllRows(sheet);
+    var dateKey  = e && e.parameter && e.parameter.dateKey   ? e.parameter.dateKey  : null;
+    var callback = e && e.parameter && e.parameter.callback  ? e.parameter.callback : null;
+    var sheet    = getOrCreateSheet();
+    var rows     = getAllRows(sheet);
 
     if (dateKey) {
       rows = rows.filter(function(r) { return r.dateKey === dateKey; });
     }
 
-    return buildResponse({ ok: true, rows: rows });
+    var payload = JSON.stringify({ ok: true, rows: rows });
+
+    // JSONP mode — wraps response in callback function call
+    // This bypasses corporate network fetch() blocks
+    if (callback) {
+      return ContentService
+        .createTextOutput(callback + "(" + payload + ");")
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+
+    return ContentService
+      .createTextOutput(payload)
+      .setMimeType(ContentService.MimeType.JSON);
+
   } catch (err) {
-    return buildResponse({ ok: false, error: err.message });
+    var errPayload = JSON.stringify({ ok: false, error: err.message });
+    return ContentService
+      .createTextOutput(errPayload)
+      .setMimeType(ContentService.MimeType.JSON);
   }
 }
 
@@ -54,10 +70,10 @@ function doPost(e) {
       new Date().toISOString(),
       dateKey,
       sourceColumn,
-      rec.email     || "",
-      rec.name      || "",
-      rec.team      || "",
-      rec.fte       != null ? rec.fte : 1,
+      rec.email  || "",
+      rec.name   || "",
+      rec.team   || "",
+      rec.fte    != null ? rec.fte : 1,
       JSON.stringify(rec.assistants || []),
       uploadedAt
     ]);
@@ -110,9 +126,8 @@ function deleteRowForPersonOnDate(sheet, dateKey, email) {
   }
 }
 
-// Use TextOutput with CORS-friendly mime type
 function buildResponse(obj) {
-  var output = ContentService.createTextOutput(JSON.stringify(obj));
-  output.setMimeType(ContentService.MimeType.JSON);
-  return output;
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }

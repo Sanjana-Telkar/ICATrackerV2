@@ -42,52 +42,86 @@ function hasSubmittedToday(dateKey, email) {
 async function fetchFromSheets(dateKey) {
   if (!CONFIG.SHEETS_URL) return;
 
-  try {
-    const url  = `${CONFIG.SHEETS_URL}?dateKey=${encodeURIComponent(dateKey)}`;
-    const resp = await fetch(url);
-    if (!resp.ok) return;
+  return new Promise(resolve => {
+    // Use JSONP to bypass corporate network fetch() blocks.
+    // A <script> tag is injected; Apps Script wraps the response in the
+    // callback function name, which the browser executes directly.
+    const callbackName = "_icaCb_" + Date.now();
+    const script       = document.createElement("script");
+    let   settled      = false;
 
-    const json = await resp.json();
-    if (!json.ok || !Array.isArray(json.rows) || json.rows.length === 0) return;
+    const cleanup = () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      delete window[callbackName];
+    };
 
-    const first      = json.rows[0];
-    const sheetRows  = json.rows.map(row => ({
-      email:      row.email,
-      name:       row.name,
-      team:       row.team,
-      fte:        parseFloat(row.fte) || 1,
-      assistants: Array.isArray(row.assistants) ? row.assistants : []
-    }));
+    // Timeout after 8 seconds
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      console.warn("[Sheets] fetchFromSheets timed out.");
+      resolve();
+    }, 8000);
 
-    // For today's date, Sheets always wins — a self-submission is always
-    // more current than a pre-staged tracker-data.js entry.
-    // For past dates, only overwrite if Sheets data is newer.
-    const today    = new Date().toISOString().slice(0, 10);
-    const existing = Storage.getDay(dateKey);
-    const sheetTs  = new Date(first.uploadedAt || 0).getTime();
-    const localTs  = existing && existing.uploadedAt
-                       ? new Date(existing.uploadedAt).getTime() : 0;
+    window[callbackName] = function(json) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
 
-    if (dateKey === today || sheetTs >= localTs) {
-      // Build map from Sheets rows, then pad with full ROSTER as "not used"
-      // so adoption % is always calculated against total headcount.
-      const recordMap = {};
-      sheetRows.forEach(r => { recordMap[r.email.toLowerCase()] = normaliseRecord(r); });
-      ROSTER.forEach(p => {
-        const k = p.email.toLowerCase();
-        if (!recordMap[k]) {
-          recordMap[k] = normaliseRecord({ email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: [] });
+      try {
+        if (!json.ok || !Array.isArray(json.rows) || json.rows.length === 0) {
+          resolve(); return;
         }
-      });
-      const records = Object.values(recordMap);
-      Storage.saveDay(dateKey, records, {
-        sourceColumn: first.sourceColumn || dateKey,
-        fte_total:    records.reduce((s, r) => s + (parseFloat(r.fte) || 1), 0)
-      });
-    }
-  } catch (err) {
-    console.warn("[Sheets] fetchFromSheets failed:", err.message);
-  }
+
+        const first     = json.rows[0];
+        const sheetRows = json.rows.map(row => ({
+          email:      row.email,
+          name:       row.name,
+          team:       row.team,
+          fte:        parseFloat(row.fte) || 1,
+          assistants: Array.isArray(row.assistants) ? row.assistants : []
+        }));
+
+        const today    = new Date().toISOString().slice(0, 10);
+        const existing = Storage.getDay(dateKey);
+        const sheetTs  = new Date(first.uploadedAt || 0).getTime();
+        const localTs  = existing && existing.uploadedAt
+                           ? new Date(existing.uploadedAt).getTime() : 0;
+
+        if (dateKey === today || sheetTs >= localTs) {
+          const recordMap = {};
+          sheetRows.forEach(r => { recordMap[r.email.toLowerCase()] = normaliseRecord(r); });
+          ROSTER.forEach(p => {
+            const k = p.email.toLowerCase();
+            if (!recordMap[k]) {
+              recordMap[k] = normaliseRecord({ email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: [] });
+            }
+          });
+          const records = Object.values(recordMap);
+          Storage.saveDay(dateKey, records, {
+            sourceColumn: first.sourceColumn || dateKey,
+            fte_total:    records.reduce((s, r) => s + (parseFloat(r.fte) || 1), 0)
+          });
+        }
+      } catch (err) {
+        console.warn("[Sheets] fetchFromSheets parse error:", err.message);
+      }
+      resolve();
+    };
+
+    script.src = `${CONFIG.SHEETS_URL}?dateKey=${encodeURIComponent(dateKey)}&callback=${callbackName}`;
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      console.warn("[Sheets] fetchFromSheets script load failed.");
+      resolve();
+    };
+    document.head.appendChild(script);
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -121,6 +121,9 @@ function writeSubmission(body) {
     sheet.getRange(sheetRow, 2).setValue(rec.name  || "");
     sheet.getRange(sheetRow, 3).setValue(rec.team  || "");
   }
+
+  // Re-apply formatting after every write so new rows/columns stay styled
+  formatSheet(sheet);
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +186,96 @@ function insertDateColumn(sheet, headers, newDateKey) {
 }
 
 // ---------------------------------------------------------------------------
+//  Formatting — called after every write
+// ---------------------------------------------------------------------------
+function formatSheet(sheet) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) return;
+
+  var headers = getHeaders(sheet);
+
+  // ── D: Bold + background on header row ───────────────────────────────────
+  var headerRange = sheet.getRange(1, 1, 1, lastCol);
+  headerRange.setFontWeight("bold");
+  headerRange.setFontSize(10);
+  headerRange.setBackground("#d9e1f2");        // soft blue-grey
+  headerRange.setFontColor("#1a1a2e");
+  headerRange.setVerticalAlignment("middle");
+  headerRange.setHorizontalAlignment("center");
+  headerRange.setWrap(false);
+
+  if (lastRow < 2) return;  // no data rows yet
+
+  var dataRows  = lastRow - 1;
+  var dataRange = sheet.getRange(2, 1, dataRows, lastCol);
+
+  // ── E: Alternate row banding (odd = white, even = very light grey) ───────
+  for (var r = 2; r <= lastRow; r++) {
+    var rowBg = (r % 2 === 0) ? "#f5f7fa" : "#ffffff";
+    sheet.getRange(r, 1, 1, META_COL_COUNT).setBackground(rowBg);
+  }
+
+  // ── A: Meta columns — slightly warmer tint to distinguish from date cols ─
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, dataRows, META_COL_COUNT)
+      .setFontColor("#2c3e50")
+      .setFontWeight("normal");
+  }
+
+  // ── B + C: Date columns — weekend tint on header + cell status colors ────
+  for (var c = META_COL_COUNT + 1; c <= lastCol; c++) {
+    var dateStr = String(headers[c - 1] || "");
+    var isWeekend = false;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      var parts   = dateStr.split("-");
+      var dateObj = new Date(
+        parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2])
+      );
+      var day = dateObj.getDay(); // 0=Sun, 6=Sat
+      isWeekend = (day === 0 || day === 6);
+    }
+
+    // B: Date column header tint
+    var colHeaderBg = isWeekend ? "#e8e8e8" : "#dce6f1";  // grey for weekend, blue for weekday
+    sheet.getRange(1, c).setBackground(colHeaderBg);
+
+    // C: Cell status colors for data rows
+    for (var r = 2; r <= lastRow; r++) {
+      var cell    = sheet.getRange(r, c);
+      var val     = String(cell.getValue() || "").trim().toLowerCase();
+      var rowBg   = (r % 2 === 0) ? "#f5f7fa" : "#ffffff";  // default banding
+
+      if (val === "") {
+        // Not submitted
+        cell.setBackground(isWeekend ? "#eeeeee" : rowBg);
+        cell.setFontColor("#999999");
+      } else if (val === "on leave") {
+        // OOO — soft amber
+        cell.setBackground("#fff8e1");
+        cell.setFontColor("#b8860b");
+        cell.setFontWeight("normal");
+      } else {
+        // Has assistants — light green
+        cell.setBackground("#e8f5e9");
+        cell.setFontColor("#2e7d32");
+        cell.setFontWeight("normal");
+      }
+    }
+  }
+
+  // ── Auto-resize meta columns for readability ──────────────────────────────
+  for (var mc = 1; mc <= META_COL_COUNT; mc++) {
+    sheet.autoResizeColumn(mc);
+  }
+  // Date columns: fixed narrow width
+  if (lastCol > META_COL_COUNT) {
+    sheet.setColumnWidths(META_COL_COUNT + 1, lastCol - META_COL_COUNT, 160);
+  }
+}
+
+// ---------------------------------------------------------------------------
 //  Helpers
 // ---------------------------------------------------------------------------
 function getOrCreateSheet() {
@@ -222,3 +315,13 @@ function jsonpResponse(callback, obj) {
     .createTextOutput(payload)
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ---------------------------------------------------------------------------
+//  Run this manually from the Apps Script editor to format existing data:
+//  Select this function in the editor dropdown → click Run
+// ---------------------------------------------------------------------------
+function applyFormatting() {
+  var sheet = getOrCreateSheet();
+  formatSheet(sheet);
+}
+

@@ -121,9 +121,6 @@ function writeSubmission(body) {
     sheet.getRange(sheetRow, 2).setValue(rec.name  || "");
     sheet.getRange(sheetRow, 3).setValue(rec.team  || "");
   }
-
-  // Re-apply formatting after every write so new rows/columns stay styled
-  formatSheet(sheet);
 }
 
 // ---------------------------------------------------------------------------

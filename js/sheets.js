@@ -175,7 +175,7 @@ async function postToSheets(payload) {
       settled = true;
       cleanup();
       reject(new Error("Submission timed out. Please check your connection and try again."));
-    }, 12000);
+    }, 20000);
 
     window[callbackName] = function(json) {
       if (settled) return;

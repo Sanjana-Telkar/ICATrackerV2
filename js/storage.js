@@ -12,10 +12,25 @@ const STORE_KEYS = {
   LAST_UPLOAD_META: "ica_last_upload_meta_v1"
 };
 
+// ---------------------------------------------------------------------------
+//  localStorage shim — falls back to an in-memory store when localStorage is
+//  blocked (Edge/Chrome Tracking Prevention in private/InPrivate windows).
+// ---------------------------------------------------------------------------
+const _memStore = {};
+function _lsGet(key) {
+  try { return localStorage.getItem(key); } catch (e) { return _memStore[key] || null; }
+}
+function _lsSet(key, val) {
+  try { localStorage.setItem(key, val); } catch (e) { _memStore[key] = val; }
+}
+function _lsRemove(key) {
+  try { localStorage.removeItem(key); } catch (e) { delete _memStore[key]; }
+}
+
 const Storage = {
   getHistory() {
     try {
-      return JSON.parse(localStorage.getItem(STORE_KEYS.HISTORY)) || {};
+      return JSON.parse(_lsGet(STORE_KEYS.HISTORY)) || {};
     } catch (e) {
       return {};
     }
@@ -24,20 +39,20 @@ const Storage = {
   saveDay(dateKey, records, meta) {
     const history = this.getHistory();
     history[dateKey] = {
-      records,                 // [{email, name, team, assistants:[...], used}]
+      records,
       uploadedAt: new Date().toISOString(),
       sourceColumn: meta && meta.sourceColumn,
       fte_total: meta && meta.fte_total
     };
-    localStorage.setItem(STORE_KEYS.HISTORY, JSON.stringify(history));
-    localStorage.setItem(STORE_KEYS.CURRENT_DATE, dateKey);
-    localStorage.setItem(STORE_KEYS.LAST_UPLOAD_META, JSON.stringify({
+    _lsSet(STORE_KEYS.HISTORY, JSON.stringify(history));
+    _lsSet(STORE_KEYS.CURRENT_DATE, dateKey);
+    _lsSet(STORE_KEYS.LAST_UPLOAD_META, JSON.stringify({
       dateKey, uploadedAt: new Date().toISOString(), sourceColumn: meta && meta.sourceColumn
     }));
   },
 
   getCurrentDateKey() {
-    return localStorage.getItem(STORE_KEYS.CURRENT_DATE);
+    return _lsGet(STORE_KEYS.CURRENT_DATE);
   },
 
   getDay(dateKey) {
@@ -47,7 +62,7 @@ const Storage = {
 
   getLastUploadMeta() {
     try {
-      return JSON.parse(localStorage.getItem(STORE_KEYS.LAST_UPLOAD_META));
+      return JSON.parse(_lsGet(STORE_KEYS.LAST_UPLOAD_META));
     } catch (e) {
       return null;
     }
@@ -58,27 +73,27 @@ const Storage = {
   },
 
   clearAll() {
-    localStorage.removeItem(STORE_KEYS.HISTORY);
-    localStorage.removeItem(STORE_KEYS.CURRENT_DATE);
-    localStorage.removeItem(STORE_KEYS.LAST_UPLOAD_META);
+    _lsRemove(STORE_KEYS.HISTORY);
+    _lsRemove(STORE_KEYS.CURRENT_DATE);
+    _lsRemove(STORE_KEYS.LAST_UPLOAD_META);
   },
 
   exportBackup() {
     return JSON.stringify({
       _v: 1,
       exportedAt: new Date().toISOString(),
-      history: localStorage.getItem(STORE_KEYS.HISTORY),
-      currentDate: localStorage.getItem(STORE_KEYS.CURRENT_DATE),
-      lastUploadMeta: localStorage.getItem(STORE_KEYS.LAST_UPLOAD_META)
+      history: _lsGet(STORE_KEYS.HISTORY),
+      currentDate: _lsGet(STORE_KEYS.CURRENT_DATE),
+      lastUploadMeta: _lsGet(STORE_KEYS.LAST_UPLOAD_META)
     });
   },
 
   importBackup(jsonString) {
     const obj = JSON.parse(jsonString);
     if (!obj || obj._v !== 1) throw new Error("Unrecognised backup format.");
-    if (obj.history)        localStorage.setItem(STORE_KEYS.HISTORY, obj.history);
-    if (obj.currentDate)    localStorage.setItem(STORE_KEYS.CURRENT_DATE, obj.currentDate);
-    if (obj.lastUploadMeta) localStorage.setItem(STORE_KEYS.LAST_UPLOAD_META, obj.lastUploadMeta);
+    if (obj.history)        _lsSet(STORE_KEYS.HISTORY, obj.history);
+    if (obj.currentDate)    _lsSet(STORE_KEYS.CURRENT_DATE, obj.currentDate);
+    if (obj.lastUploadMeta) _lsSet(STORE_KEYS.LAST_UPLOAD_META, obj.lastUploadMeta);
   }
 };
 
@@ -138,23 +153,19 @@ function loadFromTrackerData() {
     if (!latestDate || dk > latestDate) latestDate = dk;
   });
 
-  try {
-    localStorage.setItem(STORE_KEYS.HISTORY, JSON.stringify(local));
-    if (latestDate) {
-      // Only overwrite currentDate if the file has a newer entry than what
-      // is currently set (so a manually uploaded xlsx for today wins).
-      const existing = Storage.getCurrentDateKey();
-      if (!existing || latestDate >= existing) {
-        localStorage.setItem(STORE_KEYS.CURRENT_DATE, latestDate);
-        const entry = TRACKER_DATA[latestDate];
-        localStorage.setItem(STORE_KEYS.LAST_UPLOAD_META, JSON.stringify({
-          dateKey:      latestDate,
-          uploadedAt:   entry.uploadedAt || new Date().toISOString(),
-          sourceColumn: entry.sourceColumn || latestDate
-        }));
-      }
+  _lsSet(STORE_KEYS.HISTORY, JSON.stringify(local));
+  if (latestDate) {
+    // Only overwrite currentDate if the file has a newer entry than what
+    // is currently set (so a manually uploaded xlsx for today wins).
+    const existing = Storage.getCurrentDateKey();
+    if (!existing || latestDate >= existing) {
+      _lsSet(STORE_KEYS.CURRENT_DATE, latestDate);
+      const entry = TRACKER_DATA[latestDate];
+      _lsSet(STORE_KEYS.LAST_UPLOAD_META, JSON.stringify({
+        dateKey:      latestDate,
+        uploadedAt:   entry.uploadedAt || new Date().toISOString(),
+        sourceColumn: entry.sourceColumn || latestDate
+      }));
     }
-  } catch (e) {
-    console.warn("[Storage] loadFromTrackerData: localStorage write failed.", e.message);
   }
 }

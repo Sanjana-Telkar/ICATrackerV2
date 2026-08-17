@@ -11,7 +11,7 @@ const CONFIG = {
   // Set this to your deployed Apps Script URL after following the setup guide.
   // Leave as empty string "" to disable the Sheets integration.
   // Example: "https://script.google.com/macros/s/AKfy.../exec"
-  SHEETS_URL: "https://script.google.com/macros/s/AKfycbyqrJHlh36GtGcpn2jtrMdlOZSdtbCPRDNRNsMKiJRC52tSLGi5JR2OnzvJfUbi8skh/exec",
+  SHEETS_URL: "https://script.google.com/macros/s/AKfycbzrRN1PFP5PpKrrylHsUdet-QjaExZLiyYSDNAKC4EbCtrx12eB2SZa0xbD-1Sw8MED/exec",
 
   // ── Source workbook (SharePoint) ─────────────────────────────────────────
   // Link to the Excel workbook shared on SharePoint — included in manager emails.

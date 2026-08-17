@@ -1,75 +1,71 @@
 // =============================================================================
 //  ICA Tracker — Google Apps Script
 //  Paste this entire file into script.google.com → New project → Code.gs
-//  Then deploy as a Web App (see setup guide).
+//  Then deploy as a Web App:
+//    Execute as:     Me
+//    Who has access: Anyone (no sign-in required)
 // =============================================================================
 
 var SHEET_NAME = "ICA_Submissions";
 
-// ---------------------------------------------------------------------------
-//  Column headers written on first run
-// ---------------------------------------------------------------------------
 var HEADERS = ["timestamp", "dateKey", "sourceColumn", "email",
                "name", "team", "fte", "assistants", "uploadedAt"];
 
 // ---------------------------------------------------------------------------
-//  GET  — fetch all rows for a given dateKey
-//  Called by the frontend: fetch(URL + "?dateKey=2026-07-28")
+//  GET — fetch all rows for a given dateKey
+//  Called by: fetch(URL + "?dateKey=2026-08-14")
 // ---------------------------------------------------------------------------
 function doGet(e) {
-  var dateKey = e && e.parameter && e.parameter.dateKey ? e.parameter.dateKey : null;
-  var sheet   = getOrCreateSheet();
-  var rows    = getAllRows(sheet);
+  try {
+    var dateKey = e && e.parameter && e.parameter.dateKey
+                  ? e.parameter.dateKey : null;
+    var sheet = getOrCreateSheet();
+    var rows  = getAllRows(sheet);
 
-  if (dateKey) {
-    rows = rows.filter(function(r) { return r.dateKey === dateKey; });
+    if (dateKey) {
+      rows = rows.filter(function(r) { return r.dateKey === dateKey; });
+    }
+
+    return buildResponse({ ok: true, rows: rows });
+  } catch (err) {
+    return buildResponse({ ok: false, error: err.message });
   }
-
-  return jsonResponse({ ok: true, rows: rows });
 }
 
 // ---------------------------------------------------------------------------
 //  POST — upsert a single person's usage for a date
-//  Body (JSON): { dateKey, sourceColumn, uploadedAt, record: { email, name, team, fte, assistants } }
-//
-//  If a row already exists for (dateKey + email), it is deleted first,
-//  then the new row is appended — so re-submitting always overwrites cleanly.
 // ---------------------------------------------------------------------------
 function doPost(e) {
   try {
-    var body = JSON.parse(e.postData.contents);
-
+    var body         = JSON.parse(e.postData.contents);
     var dateKey      = body.dateKey;
     var sourceColumn = body.sourceColumn || dateKey;
     var uploadedAt   = body.uploadedAt   || new Date().toISOString();
     var rec          = body.record;
 
     if (!dateKey || !rec || !rec.email) {
-      return jsonResponse({ ok: false, error: "Missing dateKey or record.email." });
+      return buildResponse({ ok: false, error: "Missing dateKey or record.email." });
     }
 
     var sheet = getOrCreateSheet();
-
-    // Delete only this person's existing row for this date (upsert behaviour)
     deleteRowForPersonOnDate(sheet, dateKey, rec.email);
 
-    // Append the new row
     sheet.appendRow([
-      new Date().toISOString(),   // timestamp
+      new Date().toISOString(),
       dateKey,
       sourceColumn,
-      rec.email        || "",
-      rec.name         || "",
-      rec.team         || "",
-      rec.fte          != null ? rec.fte : 1,
+      rec.email     || "",
+      rec.name      || "",
+      rec.team      || "",
+      rec.fte       != null ? rec.fte : 1,
       JSON.stringify(rec.assistants || []),
       uploadedAt
     ]);
 
-    return jsonResponse({ ok: true });
+    return buildResponse({ ok: true });
 
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
+    return buildResponse({ ok: false, error: err.message });
   }
 }
 
@@ -99,7 +95,6 @@ function getAllRows(sheet) {
   });
 }
 
-// Delete only the row where dateKey AND email both match (case-insensitive email)
 function deleteRowForPersonOnDate(sheet, dateKey, email) {
   var data        = sheet.getDataRange().getValues();
   var dateColIdx  = data[0].indexOf("dateKey");
@@ -107,7 +102,6 @@ function deleteRowForPersonOnDate(sheet, dateKey, email) {
   if (dateColIdx === -1 || emailColIdx === -1) return;
 
   var emailLower = email.toLowerCase();
-  // Iterate backwards so row deletion doesn't shift indices
   for (var i = data.length - 1; i >= 1; i--) {
     if (data[i][dateColIdx] === dateKey &&
         String(data[i][emailColIdx]).toLowerCase() === emailLower) {
@@ -116,8 +110,9 @@ function deleteRowForPersonOnDate(sheet, dateKey, email) {
   }
 }
 
-function jsonResponse(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+// Use TextOutput with CORS-friendly mime type
+function buildResponse(obj) {
+  var output = ContentService.createTextOutput(JSON.stringify(obj));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
 }

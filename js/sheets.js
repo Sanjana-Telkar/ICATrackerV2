@@ -838,8 +838,105 @@ function setSubStatus(type, message) {
 // ---------------------------------------------------------------------------
 //  On page load — pull today's data from Sheets into localStorage
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+//  Fetch ALL historical dates from the sheet in a single JSONP call.
+//  The Apps Script action=history endpoint returns:
+//    { ok: true, history: { "YYYY-MM-DD": [ ...rows ], ... } }
+//  For each date >= SHEETS_CUTOVER_DATE the sheet is authoritative and its
+//  data overwrites whatever is in localStorage (including tracker-data.js).
+// ---------------------------------------------------------------------------
+const SHEETS_CUTOVER_DATE = "2026-08-17";  // sheet is source-of-truth from this date onward
+
+async function fetchAllHistoryFromSheets() {
+  if (!CONFIG.SHEETS_URL) return;
+
+  return new Promise(resolve => {
+    const callbackName = "_icaHist_" + Date.now();
+    const script       = document.createElement("script");
+    let   settled      = false;
+
+    const cleanup = () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      delete window[callbackName];
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      console.warn("[Sheets] fetchAllHistoryFromSheets timed out.");
+      resolve();
+    }, 15000);
+
+    window[callbackName] = function(json) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+
+      try {
+        if (!json.ok || !json.history) { console.warn("[Sheets] history fetch failed:", json); resolve(); return; }
+
+        const rosterMap = {};
+        ROSTER.forEach(p => { rosterMap[p.email.toLowerCase()] = p; });
+
+        Object.entries(json.history).forEach(([dateKey, rows]) => {
+          // Only process dates that fall on or after the cutover date
+          if (dateKey < SHEETS_CUTOVER_DATE) return;
+
+          const sheetRows = rows.map(row => {
+            const rp = rosterMap[row.email.toLowerCase()] || {};
+            return {
+              email:      row.email,
+              name:       row.name  || rp.name  || "",
+              team:       row.team  || rp.team  || "",
+              fte:        parseFloat(row.fte) || rp.fte || 1,
+              assistants: Array.isArray(row.assistants) ? row.assistants : []
+            };
+          });
+
+          // Merge: sheet rows win; fill any missing roster members with empty record
+          const recordMap = {};
+          sheetRows.forEach(r => { recordMap[r.email.toLowerCase()] = normaliseRecord(r); });
+          ROSTER.forEach(p => {
+            const k = p.email.toLowerCase();
+            if (!recordMap[k]) {
+              recordMap[k] = normaliseRecord({ email: p.email, name: p.name, team: p.team, fte: p.fte, assistants: [] });
+            }
+          });
+
+          const records = Object.values(recordMap);
+          Storage.saveDay(dateKey, records, {
+            sourceColumn: dateKey,
+            fte_total:    records.reduce((s, r) => s + (parseFloat(r.fte) || 1), 0)
+          });
+        });
+
+        console.log("[Sheets] fetchAllHistoryFromSheets: loaded", Object.keys(json.history).length, "date(s) from sheet.");
+      } catch (err) {
+        console.warn("[Sheets] fetchAllHistoryFromSheets parse error:", err.message);
+      }
+      resolve();
+    };
+
+    script.src = `${CONFIG.SHEETS_URL}?action=history&callback=${callbackName}`;
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      cleanup();
+      console.warn("[Sheets] fetchAllHistoryFromSheets script load failed.");
+      resolve();
+    };
+    document.head.appendChild(script);
+  });
+}
+
 async function initSheets() {
   if (!CONFIG.SHEETS_URL) return;
   const today = new Date().toISOString().slice(0, 10);
+  // Fetch all history first (fills in past dates from sheet), then
+  // fetch today specifically to get the latest live submissions.
+  await fetchAllHistoryFromSheets();
   await fetchFromSheets(today);
 }

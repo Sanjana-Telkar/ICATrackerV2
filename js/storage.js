@@ -125,7 +125,7 @@ function normaliseRecord(r) {
 
 // Dates on or after this key are managed exclusively by Google Sheets.
 // tracker-data.js entries for these dates are ignored so the sheet always wins.
-const TRACKER_DATA_CUTOVER = "2026-08-17";
+const TRACKER_DATA_CUTOVER = "2026-08-10";
 
 function loadFromTrackerData() {
   if (typeof TRACKER_DATA === "undefined" || !TRACKER_DATA) return;

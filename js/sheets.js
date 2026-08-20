@@ -841,7 +841,7 @@ function setSubStatus(type, message) {
 //  them all in parallel using the existing fetchFromSheets() call.
 //  No Apps Script changes required — uses the same dateKey endpoint.
 // ---------------------------------------------------------------------------
-const SHEETS_CUTOVER_DATE = "2026-08-17";  // sheet is source-of-truth from this date onward
+const SHEETS_CUTOVER_DATE = "2026-08-10";  // sheet is source-of-truth from this date onward
 
 /** Returns an array of "YYYY-MM-DD" strings from startDate up to today (inclusive). */
 function _dateRange(startDate) {

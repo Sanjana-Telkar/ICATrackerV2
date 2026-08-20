@@ -115,7 +115,27 @@ function renderLastUploadInfo() {
 }
 
 /* ---------------- Init ---------------- */
+// ---------------------------------------------------------------------------
+//  App version — bump this string whenever a breaking localStorage change is
+//  deployed (e.g. changing the cutover date). On mismatch the old history is
+//  wiped so the sheet re-populates cleanly.
+// ---------------------------------------------------------------------------
+const APP_VERSION = "v4-cutover-0810";
+
+function _checkAppVersion() {
+  const stored = localStorage.getItem("ica_app_version");
+  if (stored !== APP_VERSION) {
+    // Wipe all ICA history so stale tracker-data.js entries don't persist
+    Storage.clearAll();
+    localStorage.setItem("ica_app_version", APP_VERSION);
+    console.log("[App] Version changed from", stored, "→", APP_VERSION, "— localStorage cleared.");
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+  // Wipe stale localStorage if the app version changed
+  _checkAppVersion();
+
   // Login gate — must come first before any rendering
   initLogin();
 
